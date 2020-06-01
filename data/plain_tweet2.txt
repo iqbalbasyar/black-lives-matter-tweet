@@ -1,0 +1,1 @@
+Ini adlah contoh teks tweet. Kita akan mencoba meng-encode dengan memanfaatkan markov chain model.
