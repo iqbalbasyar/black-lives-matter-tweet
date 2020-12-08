@@ -70,7 +70,10 @@ nodes <- read.csv('data/nodes.csv')
 # build graph data
 network_nn <- graph_from_data_frame(d = edges, vertices = nodes, directed = T) %>%
   as_tbl_graph()
+```
 
+
+```{r}
 # create community, calculate centrality and remove loop edge
 set.seed(123)
 network_nn <- network_nn %>% 
@@ -82,11 +85,16 @@ network_nn <- network_nn %>%
          eigen = centrality_eigen()) %>%
   activate(edges) %>%
   filter(!edge_is_loop())
+```
 
+
+```{r}
 network_act_df <- as.data.frame(network_nn %>% activate(nodes))
 
 network_nn
 ```
+
+
 ```{r}
 as_data_frame(network_nn, "vertices") %>% 
   filter(between > 20000) %>% 
@@ -122,8 +130,8 @@ network_nn %>%
   activate(nodes) %>%
   mutate(ids = row_number()) %>%
   filter(community %in% 1:1) %>% arrange(community,ids) %>%
-  mutate(node_label = ifelse(degree >= 200 | between >= 20000,name,"")) %>%
-  mutate(node_size = ifelse(degree >= 200 | between >= 20000,log(degree),0)) %>%
+  mutate(node_label = ifelse(degree >= 200 | between >= 10000,name,"")) %>%
+  mutate(node_size = ifelse(degree >= 200 | between >= 10000,log(degree),0)) %>%
   ggraph(layout = "linear", circular = T) +
   geom_edge_arc(alpha = 0.05, aes(col = as.factor(type), edge_width = count*0.5)) +
   geom_node_label(aes(label = node_label, size = node_size),repel = T,
@@ -141,6 +149,9 @@ network_nn %>%
         legend.text = element_text(size = rel(1)))
   
 ```
+
+
+
 
 What can we get from this visualization?
 First, lets see this table

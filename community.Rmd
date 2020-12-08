@@ -1,0 +1,199 @@
+---
+output:
+  html_document:
+    theme: cosmo
+    highlight: breezedark
+    toc: true
+    toc_float:
+      collapsed: false
+    df_print: paged
+---
+
+<style>
+h1.title {
+  text-align: center;
+}
+h4.author {
+  text-align: center;
+}
+h4.date {
+  text-align: center;
+}
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE}
+# clear-up the environment
+rm(list = ls())
+
+# chunk options
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  comment = "#>"
+)
+
+options(scipen = 999)
+
+```
+
+
+```{r message=FALSE,warning=FALSE}
+# untuk data cleaning
+library(tidyverse) 
+library(lubridate)
+
+# untuk visualisasi network 
+library(tidygraph) # sudah termasuk package "ggraph" dan "igraph"
+library(graphlayouts)
+
+# untuk pengumpulan data Twitter 
+library(rtweet)
+```
+
+## Siapkan Nodes & Edges
+
+```{r}
+nodes <- read.csv("data/nodes.csv")
+edges <- read.csv("data/edges.csv")
+```
+
+
+Di atas adalah `user_id` dari akun-akun unik yang terdapat pada data munas mutual, berikut koneksinya antar satu dengan yang lain. Untuk menggabungkannya menjadi sebuah data grafik untuk pembuatan **Ego Network** kita dapat menggunakan package `igraph`.
+
+```{r eval=FALSE}
+# buat data.frame untuk grafik network
+ego <- igraph::graph_from_data_frame(d = edges, 
+                                   vertices = nodes, 
+                                   directed = F) %>%
+  as_tbl_graph()
+```
+
+```{r}
+ego
+```
+
+## Bangun Komunitas & Hitung Metrics
+
+Setelah membuat data grafik, kita akan melengkapi data tersebut dengan metrics-metrics yang umum digunakan pada SNA dan kemungkinan komunitas yang dapat terbentuk pada suatu network. Kita akan menggunakan `tidygraph` coding style untuk SNA ini agar codingan kita lebih rapih. Style ini juga umum digunakan untuk package `igraph` yang kita gunakan.
+
+Untuk membuat komunitas, terdapat beragam algoritma yang dapat digunakan. Untuk artikel ini, kita akan menggunakan algoritma `group_louvain()`. Kita juga akan menghitung 4 metrics yang berguna untuk pengidentifikasian Key Player yang akan dijelaskan di bagian berikutnya.
+
+```{r eval=FALSE}
+set.seed(123)
+ego <- ego %>% 
+  # analisis komunitas
+  mutate(community = as.factor(group_louvain())) %>%
+  # analisis beragam metrics
+  mutate(degree_c = centrality_degree()) %>%
+  mutate(betweenness_c = centrality_betweenness(directed = F,
+                                                normalized = T)) %>%
+  mutate(closeness_c = centrality_closeness(normalized = T)) %>%
+  mutate(eigen = centrality_eigen(directed = F))
+```
+
+```{r}
+ego
+```
+
+## Analisis Key Player
+
+**Key player** adalah istilah untuk user paling berpengaruh dalam suatu network. Umumnya Key Player ditentukan berdasarkan beberape metrics yang telah kita hitung sebelumnya, yaitu:
+
+* **Degree Centrality**: Node/user yang memiliki relasi terbanyak
+* **Closeness Centrality**: Node/user yang memiliki jarak rata-rata terpendek ke semua node di dalam network (berpotensi untuk penyebaran informasi yang lebih cepat)
+* **Betweeness Centrality**: Node/user sering berperan sebagai "jembatan informasi" antar node atau komunitas di dalam suatu network (berpotensi untuk penyebaran informasi yang lebih luas)
+* **Eigen Centrality**: Node/user yang memiliki kedekatan tinggi dengan node lain yang mempunyai pengaruh besar di seluruh network. Dapat dianalogikan seperti *teman dari seorang influencer*.
+
+Kita dapat mengurutkan data kita berdasarkan metrics yang diunggulkan untuk mencari Key Player. Urutan tersebut dapat disesuaikan dengan kebutuhan. Hal ini karena masing-masing metrics memiliki manfaatnya tersendiri. Untuk lebih memudahkan analisis, kita akan mengubah `munas_ego` ke struktur `data.frame` dan melakukan sorting berdasarkan 4 metrics di atas.
+
+```{r eval=FALSE}
+ego_df <- as.data.frame(ego)
+```
+
+```{r}
+head(ego_df)
+```
+
+Selanjutnya kita akan cari key player untuk tiap-tiap metrics:
+
+```{r eval=FALSE}
+kp_ego <- data.frame(
+  ego_df %>% arrange(-degree_c) %>% select(name) %>% slice(1:6),
+  ego_df %>% arrange(-betweenness_c) %>% select(name) %>% slice(1:6),
+  ego_df %>% arrange(-closeness_c) %>% select(name) %>% slice(1:6),
+  ego_df %>% arrange(-eigen) %>% select(name) %>% slice(1:6)
+  ) %>%
+  setNames(c("degree","betweenness","closeness","eigen"))
+```
+
+```{r}
+kp_ego
+```
+
+Tabel di atas menunjukan user id dari akun-akun yang memiliki nilai tinggi di masing-masing metrics. 
+
+
+## Analisis Komunitas
+
+Kita juga dapat menganalisis adanya komunitas yang dapat terbentuk di suatu network. Package `igraph` mengimplementasikan beberapa algoritma untuk deteksi komunitas diantaranya:
+
+* `group_walktrap()`
+* `group_fast_greedy()`
+* `group_louvain()`
+
+Pada artikel ini kita menggunakan `group_louvain()` yang menggunakan optimisasi modularitas. Kita tidak akan membahas detail mengenai teori lengkap di baliknya, namun berikut [artikel jurnal](arxiv.org/abs/0803.0476) mengenai penggunaan metode tersebut. Nilai **modularitas/modularity** sendiri adalah nilai yang menunjukkan seberapa baik tiap komunitas terpisah antar satu sama lain. Secara singkat, network dengan modularity yang tinggi memiliki jaringan yang padat di tiap komunitasnya, namun memiliki koneksi yang jarang antar komunitas yang berbeda.
+
+Sebelumnya dihasilkan 36 komunitas dari total 5973 akun yang ada: 
+
+```{r}
+# total user
+nrow(ego_df)
+
+# jumlah komunitas
+length(levels(ego_df$community))
+```
+
+```{r}
+# kita dapat hitung nilai modularitasnya
+cw_net <- igraph::cluster_louvain(graph = ego)
+igraph::modularity(cw_net)
+```
+
+```{r message=FALSE,warning=FALSE}
+# sebelumnya kita akan import font untuk visualisasi grafik
+library(extrafont)
+# loadfonts(device = "win")
+```
+
+```{r, eval=FALSE}
+# visualisasi network
+library(ggraph)
+
+plot <- ego %>%
+  top_n(50, degree_c) %>%
+  mutate(node_size = ifelse(degree_c >= 20,degree_c,0)) %>%
+  mutate(node_label = ifelse(betweenness_c >= 0.06,name,"")) %>%
+  ggraph(layout = "stress") +
+  geom_edge_fan(alpha = 0.05) +
+  geom_node_point(aes(color = as.factor(community), size = node_size)) +
+  geom_node_label(aes(label = node_label), repel = T,
+                 show.legend = F, fontface = "bold", label.size = 0,
+                 segment.colour="slateblue", fill = "#ffffff66") +
+  coord_fixed() +
+  theme_graph() + 
+  theme(legend.position = "right") +
+  labs(title = "@ Community Network",
+       color = "Community", size = "Degree Centrality")
+```
+
+```{r}
+# menyimpan plot di direktori lokal
+# saveRDS(plot,"plot.rds")
+```
+
+```{r fig.width=8, fig.height=8}
+plot
+```

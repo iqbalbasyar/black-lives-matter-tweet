@@ -87,8 +87,10 @@ def tweetlist2df(tweet_list):
         reply_to = tweet.in_reply_to_status_id # could be None
         geo = tweet.geo
         place = tweet.place
+        
         data.append([text, id, userid, username, created_at, likes, retweets, isquote, is_retweet, mentions, hashtags, reply_to, geo, place])
     dataframe = pd.DataFrame(data, columns=['text','id', 'userid', 'username', 'created_at', 'likes', 'retweets', 'isquote', 'is_retweet', 'mentions','hashtags','reply_to', 'geo', 'place' ])
+    
     return dataframe
 
 def clean_teks(teks):
